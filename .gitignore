@@ -1,0 +1,71 @@
+# Dependencies and package-manager caches
+node_modules/
+.pnpm-store/
+.npm/
+.yarn/
+
+# Next.js and build outputs
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# Runtime environment and secrets. Keep only sanitized templates in Git.
+.env*
+!.env.example
+!.env.sqlite.example
+
+# Local databases and their journals/backups
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-*
+prisma/backups/
+backups/
+
+# User uploads are runtime data, not source code
+public/uploads/*
+!public/uploads/.gitkeep
+
+# Tests, reports and logs
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+*.log
+logs/
+
+# Hosting and tool state
+.vercel/
+.netlify/
+.turbo/
+.cache/
+.eslintcache
+
+# IDE and operating-system files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temporary files and local archives
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.old
+*.orig
+*.zip
+*.tar
+*.tar.gz

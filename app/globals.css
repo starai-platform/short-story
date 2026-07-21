@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --paper: #f7f2e9;
+  --ink: #201b18;
+}
+
+* { box-sizing: border-box; }
+html { min-height: 100%; background: var(--paper); }
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(198, 93, 59, .10), transparent 28rem),
+    radial-gradient(circle at 92% 12%, rgba(73, 101, 87, .10), transparent 30rem),
+    var(--paper);
+  font-family: Inter, "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
+button, input, textarea, select { font: inherit; }
+button { cursor: pointer; }
+::selection { color: white; background: #c65d3b; }
+
+.landing-grid {
+  background-image:
+    linear-gradient(rgba(23, 23, 23, .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(23, 23, 23, .035) 1px, transparent 1px),
+    radial-gradient(circle at 80% 8%, rgba(255, 91, 53, .12), transparent 26rem);
+  background-size: 64px 64px, 64px 64px, auto;
+}
+.landing-gradient-text { color: #ff5b35; }
+.landing-button-dark { @apply inline-flex items-center justify-center gap-2 rounded-xl bg-[#171717] px-4 py-2.5 text-sm font-medium text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-black; }
+.landing-orbit::before, .landing-orbit::after { content: ""; position: absolute; border-radius: 999px; background: #ff5b35; box-shadow: 0 0 0 7px rgba(255, 91, 53, .1); }
+.landing-orbit::before { width: 8px; height: 8px; left: 13%; top: 18%; }
+.landing-orbit::after { width: 6px; height: 6px; right: 7%; bottom: 29%; background: #171717; box-shadow: 0 0 0 7px rgba(23, 23, 23, .08); }
+@keyframes landing-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+.landing-float { animation: landing-float 5s ease-in-out infinite; }
+.landing-float-delay { animation: landing-float 6s 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .landing-float, .landing-float-delay { animation: none; } }
+
+@layer components {
+  .card { @apply rounded-2xl border border-black/10 bg-white/80 shadow-soft backdrop-blur-sm; }
+  .label { @apply mb-2 block text-sm font-medium text-black/70; }
+  .field { @apply w-full rounded-xl border border-black/15 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-ember focus:ring-2 focus:ring-ember/10; }
+  .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-xl bg-ink px-4 py-2.5 text-sm font-medium text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-secondary { @apply inline-flex items-center justify-center gap-2 rounded-xl border border-black/15 bg-white px-4 py-2.5 text-sm font-medium transition hover:border-black/30 hover:bg-black/[.02] disabled:cursor-not-allowed disabled:opacity-50; }
+  .eyebrow { @apply text-xs font-semibold uppercase tracking-[0.2em] text-ember; }
+  .menu-item { @apply mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-black/65 transition hover:bg-black/5 hover:text-black; }
+}

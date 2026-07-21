@@ -1,0 +1,3 @@
+import { AdminUsers } from "@/components/admin-users";
+import { prisma } from "@/lib/prisma";
+export default async function UsersPage() { const users = await prisma.user.findMany({ orderBy: { createdAt: "desc" }, take: 200, select: { id: true, email: true, points: true, isActive: true, createdAt: true, _count: { select: { novelProjects: true } } } }); return <><div className="mb-6"><h2 className="font-serif text-2xl font-semibold">用户管理</h2><p className="mt-2 text-sm text-black/45">查看账户、作品与算力点，可调整余额或停用登录。</p></div><AdminUsers users={users.map((u) => ({ ...u, points: u.points.toString(), createdAt: u.createdAt.toISOString() }))}/></>; }

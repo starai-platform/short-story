@@ -1,0 +1,4 @@
+import { PromptManager } from "@/components/prompt-manager";
+import { requireAdminPage } from "@/lib/admin";
+import { prisma } from "@/lib/prisma";
+export default async function NovelTypesPage() { const admin = await requireAdminPage(); const prompts = await prisma.promptType.findMany({ where: { deletedAt: null, OR: [{ ownerId: null }, { ownerId: admin.id }] }, orderBy: [{ ownerId: "asc" }, { createdAt: "asc" }] }); return <><div className="mb-7"><h2 className="font-serif text-2xl font-semibold">小说类型</h2><p className="mt-2 text-sm text-black/45">管理系统类型，并可复制成可编辑的定制类型。大纲 Prompt 与章节 Prompt 相互独立。</p></div><PromptManager prompts={prompts.map((p) => ({ id: p.id, ownerId: p.ownerId, name: p.name, description: p.description, outlineTemplate: p.outlineTemplate, chapterTemplate: p.chapterTemplate, version: p.version, isActive: p.isActive }))}/></>; }

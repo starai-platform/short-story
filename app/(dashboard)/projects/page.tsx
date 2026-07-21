@@ -1,0 +1,31 @@
+import Link from "next/link";
+import { ArrowRight, BookMarked, BookOpen, BookOpenText, Clock3, Files, Plus, Sparkles } from "lucide-react";
+import { requireUser } from "@/lib/auth-user";
+import { prisma } from "@/lib/prisma";
+import { formatDate } from "@/lib/format";
+
+const labels: Record<string, string> = { DRAFT: "待生成大纲", OUTLINING: "规划中", READY: "创作中", GENERATING: "生成章节中", COMPLETED: "已完成", FAILED: "需要重试" };
+const coverTones = ["from-[#253b35] to-[#16241f]", "from-[#673b2e] to-[#321d18]", "from-[#313951] to-[#191d2c]", "from-[#5d4930] to-[#2c2114]"];
+
+export default async function ProjectsPage() {
+  const user = await requireUser();
+  const projects = await prisma.novelProject.findMany({ where: { userId: user.id }, orderBy: { updatedAt: "desc" }, include: { chapters: { select: { status: true, content: true } } } });
+  const totalWords = projects.reduce((all, project) => all + project.chapters.reduce((sum, chapter) => sum + chapter.content.length, 0), 0);
+  const finishedCount = projects.filter((project) => project.status === "COMPLETED").length;
+  const writingCount = projects.length - finishedCount;
+  return <div>
+    <section className="relative mb-8 overflow-hidden rounded-3xl bg-[#171717] px-5 py-7 text-white sm:px-8 sm:py-9"><div className="absolute inset-0 opacity-10 [background-image:linear-gradient(rgba(255,255,255,.18)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.18)_1px,transparent_1px)] [background-size:48px_48px]" /><div className="absolute -right-20 -top-24 size-72 rounded-full border border-white/10" /><div className="relative flex flex-col justify-between gap-8 lg:flex-row lg:items-end"><div><p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.2em] text-[#ff8062]"><Sparkles className="size-3.5" />My creative library</p><h1 className="mt-4 font-serif text-3xl font-semibold sm:text-4xl">我的小说工作台</h1><p className="mt-3 max-w-xl text-sm leading-6 text-white/40">作品自动保存。继续创作进行中的故事，或进入已完成小说的沉浸阅读模式。</p></div><Link href="/projects/new" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#ff5b35] px-5 py-3 text-sm font-semibold transition hover:bg-[#ee4b27]"><Plus className="size-4" />开始新故事</Link></div></section>
+    <section className="mb-9 grid grid-cols-3 gap-3 sm:gap-4">{[[Files, "全部作品", projects.length], [Clock3, "正在创作", writingCount], [BookMarked, "已经完成", finishedCount]].map(([Icon, label, value]) => { const StatIcon = Icon as typeof Files; return <div key={String(label)} className="rounded-2xl border border-black/[.07] bg-white/75 p-4 shadow-sm sm:flex sm:items-center sm:gap-4 sm:p-5"><span className="hidden size-10 place-items-center rounded-xl bg-black/[.04] text-black/45 sm:grid"><StatIcon className="size-4" /></span><div><p className="text-xl font-semibold sm:text-2xl">{String(value)}</p><p className="mt-1 text-[11px] text-black/40 sm:text-xs">{String(label)}</p></div></div>; })}</section>
+    <div className="mb-5 flex items-end justify-between"><div><p className="eyebrow">Bookshelf</p><h2 className="mt-2 font-serif text-2xl font-semibold">最近作品</h2></div><p className="hidden text-xs text-black/35 sm:block">累计创作 {totalWords.toLocaleString()} 字</p></div>
+    {projects.length ? <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">{projects.map((project, index) => {
+      const complete = project.chapters.filter((chapter) => chapter.status === "COMPLETED").length;
+      const words = project.chapters.reduce((sum, chapter) => sum + chapter.content.length, 0);
+      const progress = Math.round((complete / project.chapterCount) * 100);
+      const finished = progress === 100;
+      return <Link key={project.id} href={finished ? `/projects/${project.id}/read` : `/projects/${project.id}`} className="group grid min-h-60 grid-cols-[92px_1fr] overflow-hidden rounded-2xl border border-black/[.08] bg-white/80 shadow-sm transition hover:-translate-y-0.5 hover:border-black/15 hover:shadow-xl sm:grid-cols-[118px_1fr]">
+        <div className={`relative flex flex-col justify-between bg-gradient-to-br ${coverTones[index % coverTones.length]} p-4 text-white`}><span className="font-serif text-xs text-white/40">NOVEL</span><BookOpenText className="size-7 text-white/80" /><span className="text-[9px] leading-4 text-white/35">{project.chapterCount} CHAPTERS</span><div className="absolute inset-y-0 right-0 w-px bg-white/10" /></div>
+        <div className="flex min-w-0 flex-col p-5 sm:p-6"><div className="flex items-center justify-between gap-2"><span className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${finished ? "bg-emerald-50 text-emerald-700" : "bg-orange-50 text-orange-700"}`}>{labels[project.status]}</span><span className="text-[10px] text-black/30">{formatDate(project.updatedAt)}</span></div><h3 className="mt-4 line-clamp-2 font-serif text-xl font-semibold transition group-hover:text-ember sm:text-2xl">{project.title}</h3><p className="mt-2 line-clamp-2 text-xs leading-5 text-black/40 sm:text-sm sm:leading-6">{project.synopsis || project.theme}</p><div className="mt-auto pt-5"><div className="mb-2 flex justify-between text-[10px] text-black/35 sm:text-xs"><span>{complete}/{project.chapterCount} 章</span><span>{words.toLocaleString()} / {project.targetWords.toLocaleString()} 字</span></div><div className="h-1 overflow-hidden rounded-full bg-black/5"><div className={`h-full rounded-full ${finished ? "bg-emerald-500" : "bg-ember"}`} style={{ width: `${progress}%` }} /></div><p className={`mt-4 flex items-center gap-1.5 text-xs font-medium ${finished ? "text-emerald-700" : "text-black/45"}`}>{finished ? <BookOpenText className="size-3.5" /> : <ArrowRight className="size-3.5" />}{finished ? "开始阅读" : "继续创作"}</p></div></div>
+      </Link>;
+    })}</div> : <div className="flex min-h-96 flex-col items-center justify-center rounded-3xl border border-dashed border-black/15 bg-white/45 text-center"><span className="grid size-16 place-items-center rounded-2xl bg-black/[.04]"><BookOpen className="size-7 text-black/35" /></span><h2 className="mt-6 font-serif text-2xl">书架还是空的</h2><p className="mt-2 text-sm text-black/40">从一个核心创意开始创作第一部小说。</p><Link href="/projects/new" className="btn-primary mt-6"><Plus className="size-4" />创建小说</Link></div>}
+  </div>;
+}

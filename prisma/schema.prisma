@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GenerationStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum NovelStatus {
+  DRAFT
+  OUTLINING
+  READY
+  GENERATING
+  COMPLETED
+  FAILED
+}
+
+enum ChapterStatus {
+  PENDING
+  GENERATING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum PointTransactionType {
+  RECHARGE
+  CONSUMPTION
+  ADJUSTMENT
+  REFUND
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  isActive     Boolean      @default(true)
+  points       Decimal      @default(0) @db.Decimal(18, 6)
+  promptTypes  PromptType[]
+  generations Generation[]
+  novelProjects NovelProject[]
+  pointTransactions PointTransaction[]
+  redemptionRecords RedemptionRecord[]
+}
+
+model PromptType {
+  id          String       @id @default(cuid())
+  ownerId     String?
+  owner       User?        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name        String
+  description String       @default("")
+  outlineTemplate String   @map("template") @db.Text
+  chapterTemplate String   @db.Text
+  version     Int          @default(1)
+  isActive    Boolean      @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  generations Generation[]
+  novelProjects NovelProject[]
+
+  @@index([ownerId, deletedAt])
+}
+
+model NovelProject {
+  id                     String         @id @default(cuid())
+  userId                 String
+  user                   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  promptTypeId           String?
+  promptType             PromptType?    @relation(fields: [promptTypeId], references: [id], onDelete: SetNull)
+  promptNameSnapshot     String
+  outlinePromptSnapshot  String         @map("promptTemplateSnapshot") @db.Text
+  chapterPromptSnapshot  String         @db.Text
+  promptVersionSnapshot  Int
+  title                  String         @default("未命名小说")
+  theme                  String         @db.Text
+  protagonist            String         @default("") @db.Text
+  worldSetting           String         @default("") @db.Text
+  pace                    String         @default("张弛有度")
+  ending                  String         @default("完整收束")
+  constraints             String         @default("") @db.Text
+  keywords               Json
+  style                  String
+  pov                    String
+  chapterCount           Int
+  targetWords            Int
+  synopsis               String         @default("") @db.Text
+  characters             Json?
+  outline                Json?
+  status                 NovelStatus    @default(DRAFT)
+  errorCode              String?
+  errorMessage           String?
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+  completedAt            DateTime?
+  chapters               NovelChapter[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([promptTypeId])
+}
+
+model NovelChapter {
+  id                String        @id @default(cuid())
+  projectId         String
+  project           NovelProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number            Int
+  title             String
+  outlineSummary    String        @db.Text
+  beats             Json
+  content           String        @default("") @db.Text
+  generationSummary String        @default("") @db.Text
+  status            ChapterStatus @default(PENDING)
+  model             String?
+  inputTokens       Int?
+  outputTokens      Int?
+  totalTokens       Int?
+  durationMs        Int?
+  costPoints        Decimal       @default(0) @db.Decimal(18, 6)
+  errorCode         String?
+  errorMessage      String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  completedAt       DateTime?
+
+  @@unique([projectId, number])
+  @@index([projectId, status])
+}
+
+model Generation {
+  id                    String           @id @default(cuid())
+  userId                String
+  user                  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  promptTypeId          String?
+  promptType            PromptType?      @relation(fields: [promptTypeId], references: [id], onDelete: SetNull)
+  promptNameSnapshot    String
+  promptTemplateSnapshot String          @db.Text
+  promptVersionSnapshot Int
+  input                 Json
+  output                String           @default("") @db.Text
+  status                GenerationStatus @default(RUNNING)
+  model                 String
+  inputTokens           Int?
+  outputTokens          Int?
+  totalTokens           Int?
+  durationMs            Int?
+  costPoints            Decimal          @default(0) @db.Decimal(18, 6)
+  errorCode             String?
+  errorMessage          String?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  completedAt           DateTime?
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([promptTypeId])
+}
+
+model AiModel {
+  id                    String   @id @default(cuid())
+  name                  String
+  model                 String
+  baseUrl               String
+  apiKeyEncrypted       String   @db.Text
+  inputPricePerMillion  Decimal  @default(0) @db.Decimal(18, 6)
+  outputPricePerMillion Decimal  @default(0) @db.Decimal(18, 6)
+  billingMultiplier     Decimal  @default(1) @db.Decimal(10, 4)
+  isDefault             Boolean  @default(false)
+  isFallback            Boolean  @default(false)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([isActive, isDefault, isFallback])
+}
+
+model RedemptionCode {
+  id          String             @id @default(cuid())
+  code        String             @unique
+  points      Decimal            @db.Decimal(18, 6)
+  maxUses     Int                @default(1)
+  usedCount   Int                @default(0)
+  isActive    Boolean            @default(true)
+  expiresAt   DateTime?
+  note        String             @default("")
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  records     RedemptionRecord[]
+}
+
+model RedemptionRecord {
+  id        String         @id @default(cuid())
+  codeId    String
+  code      RedemptionCode @relation(fields: [codeId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  points    Decimal        @db.Decimal(18, 6)
+  createdAt DateTime       @default(now())
+
+  @@unique([codeId, userId])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model PointTransaction {
+  id           String               @id @default(cuid())
+  userId       String
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         PointTransactionType
+  amount       Decimal              @db.Decimal(18, 6)
+  balanceAfter Decimal              @db.Decimal(18, 6)
+  description  String
+  referenceId  String?
+  createdAt    DateTime             @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([referenceId])
+}
+
+model SystemSettings {
+  id              String   @id @default("default")
+  siteName        String   @default("章回")
+  logoUrl         String   @default("")
+  faviconUrl      String   @default("")
+  siteTitle       String   @default("章回｜AI 短篇小说生成器")
+  siteDescription String   @default("规划并生成 10–50 章、10 万字以内的完整中文小说。") @db.Text
+  footerCopyright String   @default("让每一个灵感，都有机会成为完整作品。")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

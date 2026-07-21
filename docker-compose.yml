@@ -1,0 +1,48 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-novel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-novel}
+      POSTGRES_DB: ${POSTGRES_DB:-novel}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - site_uploads:/app/public/uploads
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-novel}:${POSTGRES_PASSWORD:-novel}@db:5432/${POSTGRES_DB:-novel}?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:?请在 .env 中配置 AUTH_SECRET}
+      AUTH_TRUST_HOST: "true"
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      MODEL_ENCRYPTION_KEY: ${MODEL_ENCRYPTION_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      LLM_API_KEY: ${LLM_API_KEY:?请在 .env 中配置 LLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL:?请在 .env 中配置 LLM_MODEL}
+      LLM_MAX_OUTPUT_TOKENS: ${LLM_MAX_OUTPUT_TOKENS:-16000}
+      LLM_OUTLINE_MAX_OUTPUT_TOKENS: ${LLM_OUTLINE_MAX_OUTPUT_TOKENS:-32768}
+      LLM_CHAPTER_MAX_CALLS: ${LLM_CHAPTER_MAX_CALLS:-3}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
+  site_uploads:

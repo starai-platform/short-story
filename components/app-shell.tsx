@@ -1,0 +1,26 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { BookOpenText, Gauge, Library, Plus, ShieldCheck, Sparkles, WalletCards } from "lucide-react";
+import { AccountMenu } from "@/components/account-menu";
+
+const links = [{ href: "/projects", label: "我的小说", description: "作品与进度", icon: Library }, { href: "/projects/new", label: "新建小说", description: "开始新的故事", icon: Plus }];
+
+export function AppShell({ children, email, points, isAdmin, siteName, logoUrl }: { children: React.ReactNode; email: string; points: string; isAdmin: boolean; siteName: string; logoUrl: string }) {
+  const pathname = usePathname();
+  const allLinks = isAdmin ? [...links, { href: "/admin", label: "管理中心", description: "系统运营配置", icon: ShieldCheck }] : links;
+  return <div className="min-h-screen bg-[#f4f3ef] md:grid md:grid-cols-[264px_1fr]">
+    <aside className="relative hidden overflow-hidden bg-[#171717] px-5 py-6 text-white md:sticky md:top-0 md:flex md:h-screen md:flex-col">
+      <div className="absolute inset-0 opacity-[.08] [background-image:linear-gradient(rgba(255,255,255,.18)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.18)_1px,transparent_1px)] [background-size:44px_44px]" />
+      <Link href="/projects" className="relative flex items-center gap-3 px-2 font-serif text-xl font-semibold">{logoUrl ? <img src={logoUrl} alt={siteName} className="size-10 rounded-xl object-contain" /> : <span className="grid size-10 place-items-center rounded-xl bg-white text-black"><BookOpenText className="size-5" /></span>}<span className="min-w-0"><span className="block truncate">{siteName}</span><span className="mt-0.5 block font-sans text-[9px] font-normal tracking-[.2em] text-white/30">AI NOVEL STUDIO</span></span></Link>
+      <div className="relative mt-10 px-3 text-[10px] font-semibold uppercase tracking-[.2em] text-white/25">创作空间</div><nav className="relative mt-3 space-y-1.5">{allLinks.map(({ href, label, description, icon: Icon }) => { const active = pathname === href || (href !== "/projects" && pathname.startsWith(`${href}/`)); return <Link key={href} href={href} className={`group flex items-center gap-3 rounded-xl px-3 py-3 transition ${active ? "bg-white text-black shadow-xl" : "text-white/55 hover:bg-white/[.07] hover:text-white"}`}><span className={`grid size-9 shrink-0 place-items-center rounded-lg ${active ? "bg-[#ff5b35]/10 text-[#e64c28]" : "bg-white/[.06]"}`}><Icon className="size-4" /></span><span className="min-w-0"><b className="block text-sm font-medium">{label}</b><span className={`mt-0.5 block truncate text-[10px] ${active ? "text-black/35" : "text-white/25"}`}>{description}</span></span></Link>; })}</nav>
+      <div className="relative mt-auto"><div className="mb-4 rounded-2xl border border-white/10 bg-white/[.04] p-4"><div className="flex items-center gap-2 text-xs text-white/35"><Sparkles className="size-3.5 text-[#ff8062]" />可用算力</div><p className="mt-2 text-2xl font-semibold tracking-tight">{Number(points).toFixed(3)}<span className="ml-1 text-xs font-normal text-white/30">点</span></p><button onClick={() => window.dispatchEvent(new Event("open-recharge"))} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#ff5b35] px-3 py-2.5 text-sm font-medium text-white transition hover:bg-[#ee4b27]"><WalletCards className="size-4" />充值算力点</button></div><p className="px-2 text-[10px] leading-4 text-white/20">创作内容将自动保存到你的私有空间</p></div>
+    </aside>
+    <div className="min-w-0">
+      <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-black/[.07] bg-[#f4f3ef]/90 px-4 backdrop-blur-xl md:h-[76px] md:px-8 lg:px-10"><Link href="/projects" className="flex min-w-0 items-center gap-2.5 font-serif text-lg font-semibold md:hidden">{logoUrl ? <img src={logoUrl} alt={siteName} className="size-8 rounded-lg object-contain" /> : <span className="grid size-8 place-items-center rounded-lg bg-black text-white"><BookOpenText className="size-4" /></span>}<span className="truncate">{siteName}</span></Link><div className="hidden items-center gap-3 md:flex"><span className="grid size-8 place-items-center rounded-lg border border-black/10 bg-white"><Gauge className="size-4 text-black/45" /></span><div><p className="text-xs font-medium">创作工作台</p><p className="mt-0.5 text-[10px] text-black/35">让灵感成为完整作品</p></div></div><AccountMenu email={email} initialPoints={points} isAdmin={isAdmin} /></header>
+      <main className="min-w-0 px-4 pb-28 pt-6 md:px-8 md:py-8 lg:px-10 lg:py-10"><div className="mx-auto max-w-[1440px]">{children}</div></main>
+    </div>
+    <nav className="fixed inset-x-3 bottom-3 z-40 flex items-center justify-around rounded-2xl border border-black/10 bg-[#171717]/95 p-1.5 shadow-2xl backdrop-blur-xl md:hidden">{allLinks.map(({ href, label, icon: Icon }) => { const active = pathname === href || (href !== "/projects" && pathname.startsWith(`${href}/`)); return <Link key={href} href={href} className={`flex min-w-20 flex-col items-center gap-1 rounded-xl px-3 py-2 text-[11px] transition ${active ? "bg-white text-black" : "text-white/45"}`}><Icon className="size-4" />{label.replace("中心", "")}</Link>; })}</nav>
+  </div>;
+}

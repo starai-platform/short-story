@@ -1,0 +1,206 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String             @id @default(cuid())
+  email             String             @unique
+  passwordHash      String
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  isActive          Boolean            @default(true)
+  points            Decimal            @default(0)
+  promptTypes       PromptType[]
+  generations       Generation[]
+  novelProjects     NovelProject[]
+  pointTransactions PointTransaction[]
+  redemptionRecords RedemptionRecord[]
+}
+
+model PromptType {
+  id                 String         @id @default(cuid())
+  ownerId            String?
+  owner              User?          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name               String
+  description        String         @default("")
+  outlineTemplate    String         @map("template")
+  chapterTemplate    String
+  version            Int            @default(1)
+  isActive           Boolean        @default(true)
+  deletedAt          DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  generations        Generation[]
+  novelProjects      NovelProject[]
+
+  @@index([ownerId, deletedAt])
+}
+
+model NovelProject {
+  id                    String         @id @default(cuid())
+  userId                String
+  user                  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  promptTypeId          String?
+  promptType            PromptType?    @relation(fields: [promptTypeId], references: [id], onDelete: SetNull)
+  promptNameSnapshot    String
+  outlinePromptSnapshot String         @map("promptTemplateSnapshot")
+  chapterPromptSnapshot String
+  promptVersionSnapshot Int
+  title                 String         @default("未命名小说")
+  theme                 String
+  protagonist           String         @default("")
+  worldSetting          String         @default("")
+  pace                   String         @default("张弛有度")
+  ending                 String         @default("完整收束")
+  constraints            String         @default("")
+  keywords               Json
+  style                  String
+  pov                    String
+  chapterCount           Int
+  targetWords            Int
+  synopsis               String         @default("")
+  characters             Json?
+  outline                Json?
+  status                 String         @default("DRAFT")
+  errorCode              String?
+  errorMessage           String?
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+  completedAt            DateTime?
+  chapters               NovelChapter[]
+
+  @@index([userId, createdAt])
+  @@index([promptTypeId])
+}
+
+model NovelChapter {
+  id                String       @id @default(cuid())
+  projectId         String
+  project           NovelProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number            Int
+  title             String
+  outlineSummary    String
+  beats             Json
+  content           String       @default("")
+  generationSummary String       @default("")
+  status            String       @default("PENDING")
+  model             String?
+  inputTokens       Int?
+  outputTokens      Int?
+  totalTokens       Int?
+  durationMs        Int?
+  costPoints        Decimal      @default(0)
+  errorCode         String?
+  errorMessage      String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  completedAt       DateTime?
+
+  @@unique([projectId, number])
+  @@index([projectId, status])
+}
+
+model Generation {
+  id                     String     @id @default(cuid())
+  userId                 String
+  user                   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  promptTypeId           String?
+  promptType             PromptType? @relation(fields: [promptTypeId], references: [id], onDelete: SetNull)
+  promptNameSnapshot     String
+  promptTemplateSnapshot String
+  promptVersionSnapshot  Int
+  input                  Json
+  output                 String     @default("")
+  status                 String     @default("RUNNING")
+  model                  String
+  inputTokens            Int?
+  outputTokens           Int?
+  totalTokens            Int?
+  durationMs             Int?
+  costPoints             Decimal    @default(0)
+  errorCode              String?
+  errorMessage            String?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+  completedAt            DateTime?
+
+  @@index([userId, createdAt])
+  @@index([promptTypeId])
+}
+
+model AiModel {
+  id                    String   @id @default(cuid())
+  name                  String
+  model                 String
+  baseUrl               String
+  apiKeyEncrypted       String
+  inputPricePerMillion  Decimal  @default(0)
+  outputPricePerMillion Decimal  @default(0)
+  billingMultiplier     Decimal  @default(1)
+  isDefault             Boolean  @default(false)
+  isFallback            Boolean  @default(false)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([isActive, isDefault, isFallback])
+}
+
+model RedemptionCode {
+  id        String             @id @default(cuid())
+  code      String             @unique
+  points    Decimal
+  maxUses   Int                @default(1)
+  usedCount Int                @default(0)
+  isActive  Boolean            @default(true)
+  expiresAt DateTime?
+  note      String             @default("")
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  records   RedemptionRecord[]
+}
+
+model RedemptionRecord {
+  id        String         @id @default(cuid())
+  codeId    String
+  code      RedemptionCode @relation(fields: [codeId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  points    Decimal
+  createdAt DateTime       @default(now())
+
+  @@unique([codeId, userId])
+  @@index([userId, createdAt])
+}
+
+model PointTransaction {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         String
+  amount       Decimal
+  balanceAfter Decimal
+  description  String
+  referenceId  String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([referenceId])
+}
+
+model SystemSettings {
+  id               String   @id @default("default")
+  siteName         String   @default("章回")
+  logoUrl          String   @default("")
+  faviconUrl       String   @default("")
+  siteTitle        String   @default("章回｜AI 短篇小说生成器")
+  siteDescription  String   @default("规划并生成 10–50 章、10 万字以内的完整中文小说。")
+  footerCopyright  String   @default("让每一个灵感，都有机会成为完整作品。")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
