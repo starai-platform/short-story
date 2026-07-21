@@ -16,6 +16,7 @@ describe("OpenAI-compatible adapter", () => {
     process.env.LLM_MODEL = "test-model";
     process.env.LLM_BASE_URL = "https://example.test/v1";
     delete process.env.LLM_OUTLINE_MAX_OUTPUT_TOKENS;
+    delete process.env.LLM_OUTLINE_RESPONSE_FORMAT;
     create.mockResolvedValue((async function* () {
       yield { choices: [{ delta: { content: "第一段" } }], usage: null };
       yield { choices: [{ delta: { content: "第二段" } }], usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 } };

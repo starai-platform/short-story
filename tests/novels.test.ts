@@ -20,6 +20,16 @@ describe("Model output parsing", () => {
   it("parses fenced outline JSON", () => {
     expect(parseModelJson("```json\n{\"title\":\"雨城\"}\n```")) .toEqual({ title: "雨城" });
   });
+  it("repairs common provider JSON formatting mistakes locally", () => {
+    expect(parseModelJson('说明如下：```json\n{“title”：“雨城”，“synopsis”：“第一行\n第二行”，}\n```')).toEqual({
+      title: "雨城",
+      synopsis: "第一行\n第二行",
+    });
+    expect(parseModelJson('{title:"雨城", chapters:[],}')).toEqual({ title: "雨城", chapters: [] });
+  });
+  it("extracts the first balanced JSON object before trailing commentary", () => {
+    expect(parseModelJson('大纲：{"title":"雨城"}\n以上是完整规划。')).toEqual({ title: "雨城" });
+  });
   it("validates a multi-chapter outline", () => {
     const chapters = Array.from({ length: 10 }, (_, index) => ({ number: index + 1, title: `第${index + 1}章`, summary: "这一章包含足够长度的剧情描述并推动故事主线继续发展。", beats: ["冲突出现", "局势发生变化"] }));
     expect(novelOutlineSchema.safeParse({ title: "雨城", synopsis: "这是一段足够长的全书梗概，用来说明主要人物如何调查共同失忆事件，并在层层追查中发现城市秘密，最终面对真相、责任与个人选择。", characters: [{ name: "林默", role: "调查共同失忆事件的记者", arc: "从只相信证据到愿意承担真相带来的责任" }], chapters }).success).toBe(true);

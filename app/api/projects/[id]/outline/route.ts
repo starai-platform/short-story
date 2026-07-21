@@ -49,11 +49,17 @@ export async function POST(_: Request, { params }: Context) {
   const abort = new AbortController();
   const timeout = setTimeout(() => abort.abort("timeout"), 180_000);
   try {
+    // Many OpenAI-compatible gateways do not implement json_schema even when
+    // their chat endpoint otherwise works. Text mode plus local repair is the
+    // safest default; deployments with verified support can opt into strict mode.
+    const responseFormat = process.env.LLM_OUTLINE_RESPONSE_FORMAT?.trim().toLowerCase() === "json_schema"
+      ? buildNovelOutlineResponseFormat(project.chapterCount)
+      : undefined;
     const response = await completeText(
       OUTLINE_SYSTEM,
       buildOutlinePrompt(input, project.outlinePromptSnapshot),
       abort.signal,
-      buildNovelOutlineResponseFormat(project.chapterCount),
+      responseFormat,
       outlineMaxOutputTokens(project.chapterCount),
       models,
     );

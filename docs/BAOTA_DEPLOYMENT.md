@@ -73,6 +73,7 @@ LLM_API_KEY="你的模型API-Key"
 LLM_MODEL="你的模型ID"
 LLM_MAX_OUTPUT_TOKENS="16000"
 LLM_OUTLINE_MAX_OUTPUT_TOKENS="32768"
+LLM_OUTLINE_RESPONSE_FORMAT="text"
 LLM_CHAPTER_MAX_CALLS="3"
 ```
 
@@ -159,8 +160,11 @@ LLM_API_KEY="你的模型API-Key"
 LLM_MODEL="你的模型ID"
 LLM_MAX_OUTPUT_TOKENS="16000"
 LLM_OUTLINE_MAX_OUTPUT_TOKENS="32768"
+LLM_OUTLINE_RESPONSE_FORMAT="text"
 LLM_CHAPTER_MAX_CALLS="3"
 ```
+
+建议保持 `LLM_OUTLINE_RESPONSE_FORMAT="text"`。很多第三方 OpenAI 兼容网关能生成文本，但不支持 `json_schema` 请求参数；默认文本模式会在服务端本地修复常见 JSON 格式问题，且不会增加第二次模型调用。只有供应商明确支持严格 JSON Schema 时再改成 `json_schema`。
 
 `.env` 只能保存在服务器，不能提交到 Git，也不要通过聊天或截图公开。第一次启动时，如果 `ADMIN_EMAILS` 的第一个邮箱不存在且填写了 `ADMIN_PASSWORD`，系统会自动创建管理员账号。
 

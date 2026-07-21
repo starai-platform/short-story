@@ -90,8 +90,11 @@ LLM_API_KEY="你的 API Key"
 LLM_MODEL="服务支持的模型 ID"
 LLM_MAX_OUTPUT_TOKENS="16000"
 LLM_OUTLINE_MAX_OUTPUT_TOKENS="32768"
+LLM_OUTLINE_RESPONSE_FORMAT="text"
 LLM_CHAPTER_MAX_CALLS="3"
 ```
+
+`LLM_OUTLINE_RESPONSE_FORMAT` 默认使用兼容性最好的 `text`：模型仍被要求只输出 JSON，服务端会本地修正常见的代码块、尾逗号、中文标点和字符串换行，再进行严格字段校验，不会额外调用模型。只有确认供应商完整支持 Chat Completions `json_schema` 时才建议改为 `json_schema`。
 
 `ADMIN_EMAILS` 支持使用英文逗号配置多个管理员邮箱。管理员登录后会看到“管理”菜单，可维护小说类型、AI 模型、用户、兑换码与系统设置。系统设置支持站点名称、LOGO、ICO、页面 Title、站点描述和首页版权配置；上传图片保存在 Docker 的 `site_uploads` 持久化卷中。数据库模型未配置时继续使用 `LLM_*` 环境变量；配置数据库模型后，可分别指定默认与备用模型，以及输入/输出每百万 Token 单价和费率倍数。API Key 使用 `MODEL_ENCRYPTION_KEY`（未设置时回退到 `AUTH_SECRET`）进行 AES-256-GCM 加密后保存。
 

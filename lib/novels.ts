@@ -60,13 +60,81 @@ export class OutlineOutputError extends Error {
   }
 }
 
-export function parseModelJson(text: string) {
+function extractJsonObject(text: string) {
   const normalized = text.replace(/^\uFEFF/, "").trim();
-  const fenced = normalized.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
-  const firstBrace = normalized.indexOf("{");
-  const lastBrace = normalized.lastIndexOf("}");
-  const candidate = fenced ?? (firstBrace >= 0 && lastBrace > firstBrace ? normalized.slice(firstBrace, lastBrace + 1) : normalized);
-  return JSON.parse(candidate.trim()) as unknown;
+  const fenced = normalized.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
+  const source = fenced || normalized;
+  const start = source.indexOf("{");
+  if (start < 0) return source;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === "{") depth += 1;
+    else if (char === "}" && --depth === 0) return source.slice(start, index + 1);
+  }
+  const lastBrace = source.lastIndexOf("}");
+  return lastBrace > start ? source.slice(start, lastBrace + 1) : source.slice(start);
+}
+
+function escapeJsonStringControls(text: string) {
+  let output = "";
+  let inString = false;
+  let escaped = false;
+  for (const char of text) {
+    if (inString && !escaped && (char === "\n" || char === "\r" || char === "\t")) {
+      output += char === "\t" ? "\\t" : "\\n";
+      continue;
+    }
+    output += char;
+    if (escaped) escaped = false;
+    else if (char === "\\" && inString) escaped = true;
+    else if (char === '"') inString = !inString;
+  }
+  return output;
+}
+
+function repairCommonJson(text: string, normalizeChinesePunctuation = false) {
+  let repaired = text
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "")
+    .replace(/,\s*([}\]])/g, "$1")
+    .replace(/([{,]\s*)([A-Za-z_$][\w$-]*)\s*:/g, '$1"$2":')
+    .replace(/\bTrue\b/g, "true")
+    .replace(/\bFalse\b/g, "false")
+    .replace(/\bNone\b/g, "null");
+  if (normalizeChinesePunctuation) {
+    repaired = repaired
+      .replace(/[“”]/g, '"')
+      .replace(/：/g, ":")
+      .replace(/，(?=\s*["”A-Za-z_$}\]])/g, ",")
+      .replace(/,\s*([}\]])/g, "$1")
+      .replace(/([{,]\s*)([A-Za-z_$][\w$-]*)\s*:/g, '$1"$2":');
+  }
+  return escapeJsonStringControls(repaired);
+}
+
+export function parseModelJson(text: string) {
+  const candidate = extractJsonObject(text).trim();
+  const attempts = [candidate, repairCommonJson(candidate), repairCommonJson(candidate, true)];
+  let lastError: unknown;
+  for (const attempt of [...new Set(attempts)]) {
+    try {
+      return JSON.parse(attempt) as unknown;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 export function parseNovelOutline(text: string, expectedChapters: number): NovelOutline {
