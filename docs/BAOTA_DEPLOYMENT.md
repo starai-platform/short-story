@@ -372,6 +372,10 @@ chmod 770 /www/wwwroot/novel-s/prisma
 
 正常执行 `docker compose up -d --build`、`restart` 或不带 `-v` 的 `down` 不会删除数据。禁止在没有备份时删除 `postgres_data`、`site_uploads` 卷或运行 `docker compose down -v`。
 
+### 7. Windows 提示 `Unknown file extension ".exe"`
+
+这是旧版 SQLite 启动器把 pnpm 11 独立版的 `pnpm.exe` 误当成 JavaScript 文件导致的，并非 Node.js、SQLite 或数据库损坏。更新项目代码后重新运行 `start-sqlite.cmd` 即可；新版启动器同时兼容 pnpm 的 `.js/.cjs/.mjs`、`.cmd` 和 `.exe` 安装形式。
+
 ## 十、安全检查清单
 
 - `.env`、`.env.local`、数据库和备份文件均未提交到 Git。

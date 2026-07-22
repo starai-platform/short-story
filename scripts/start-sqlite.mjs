@@ -49,9 +49,15 @@ if (!isUsablePassword(adminPassword)) {
 }
 const adminAlreadyBootstrapped = readEnvValue(localEnv, "SQLITE_ADMIN_BOOTSTRAPPED") === "true" || readEnvValue(projectEnv, "SQLITE_ADMIN_BOOTSTRAPPED") === "true";
 
-const pnpmScript = process.env.npm_execpath;
-const command = pnpmScript ? process.execPath : (process.platform === "win32" ? "pnpm.cmd" : "pnpm");
-const commandPrefix = pnpmScript ? [pnpmScript] : [];
+const pnpmExecPath = process.env.npm_execpath?.trim();
+const pnpmIsNodeScript = Boolean(pnpmExecPath && /\.(?:cjs|mjs|js)$/i.test(pnpmExecPath));
+// Corepack/pnpm may expose npm_execpath as a JS shim, a Windows .cmd shim, or
+// a native pnpm.exe (pnpm 11 standalone). Only JS shims may be passed to Node.
+const command = pnpmIsNodeScript
+  ? process.execPath
+  : (pnpmExecPath || (process.platform === "win32" ? "pnpm.cmd" : "pnpm"));
+const commandPrefix = pnpmIsNodeScript && pnpmExecPath ? [pnpmExecPath] : [];
+const commandNeedsShell = process.platform === "win32" && /\.(?:cmd|bat)$/i.test(command);
 const production = process.argv.includes("--prod");
 const portArg = process.argv.find((item) => item.startsWith("--port="));
 const port = portArg?.slice("--port=".length) || process.env.PORT || "3000";
@@ -68,7 +74,7 @@ const env = {
 
 function run(args, label) {
   process.stdout.write(`\n[SQLite] ${label}\n`);
-  const result = spawnSync(command, [...commandPrefix, ...args], { cwd: root, env, stdio: "inherit", shell: !pnpmScript && process.platform === "win32" });
+  const result = spawnSync(command, [...commandPrefix, ...args], { cwd: root, env, stdio: "inherit", shell: commandNeedsShell });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status || 1);
 }
@@ -84,6 +90,10 @@ if (!adminAlreadyBootstrapped) {
 if (production) run(["exec", "next", "build"], "构建生产版本");
 
 process.stdout.write(`\n[SQLite] ${production ? "生产服务" : "开发服务"}启动于 http://localhost:${port}\n`);
-const child = spawn(command, [...commandPrefix, "exec", "next", production ? "start" : "dev", "-p", port], { cwd: root, env, stdio: "inherit", shell: !pnpmScript && process.platform === "win32" });
+const child = spawn(command, [...commandPrefix, "exec", "next", production ? "start" : "dev", "-p", port], { cwd: root, env, stdio: "inherit", shell: commandNeedsShell });
+child.on("error", (error) => {
+  process.stderr.write(`[SQLite] 无法启动 pnpm：${error.message}\n`);
+  process.exitCode = 1;
+});
 child.on("exit", (code, signal) => process.exitCode = code ?? (signal ? 1 : 0));
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => child.kill(signal));

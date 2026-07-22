@@ -66,6 +66,8 @@ pnpm install
 - macOS / Linux：运行 `sh start-sqlite.sh`
 - 命令行：运行 `pnpm sqlite`
 
+Windows 上同时兼容 Corepack、Node.js 安装目录中的 `pnpm.cmd`，以及 pnpm 11 独立版 `pnpm.exe`。
+
 首次运行会自动生成 SQLite Client、创建数据库、同步全部表结构、写入系统小说类型并启动开发服务。再次运行会保留原有账号、作品和设置。
 
 生产方式启动：
