@@ -1,8 +1,8 @@
 import { Prisma } from "@prisma/client";
-import { auth } from "@/auth";
 import { apiError } from "@/lib/api";
-import { assertCanGenerate, chargeUsage } from "@/lib/billing";
-import { resolveModelChain, streamStory, type LlmUsage, type ResolvedModel } from "@/lib/llm";
+import { requireActiveApi } from "@/lib/auth-user";
+import { assertCanGenerate, billingErrorResponse, chargeUsage } from "@/lib/billing";
+import { classifyProviderError, resolveModelChain, streamStory, type LlmUsage, type ResolvedModel } from "@/lib/llm";
 import { prisma } from "@/lib/prisma";
 import { generationInputSchema, renderPrompt, STORY_SYSTEM_PROMPT } from "@/lib/prompts";
 
@@ -17,8 +17,8 @@ function event(type: string, data: unknown) {
 }
 
 export async function POST(request: Request) {
-  const session = await auth();
-  if (!session?.user?.id) return apiError("UNAUTHORIZED", "请先登录", 401);
+  const authz = await requireActiveApi();
+  if ("error" in authz) return authz.error;
 
   const parsed = generationInputSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return apiError("VALIDATION_ERROR", "生成参数不正确", 400, parsed.error.flatten());
@@ -26,10 +26,9 @@ export async function POST(request: Request) {
   let models: ResolvedModel[];
   try {
     models = await resolveModelChain();
-    await assertCanGenerate(session.user.id, models[0]);
+    await assertCanGenerate(authz.user.id, ...models);
   } catch (error) {
-    if (error instanceof Error && error.message === "INSUFFICIENT_POINTS") return apiError("INSUFFICIENT_POINTS", "算力点不足，请先使用兑换码充值", 402);
-    return apiError("PROVIDER_ERROR", "模型服务尚未配置", 503);
+    return billingErrorResponse(error);
   }
   let selectedModel = models[0];
   let model = selectedModel.model;
@@ -39,7 +38,7 @@ export async function POST(request: Request) {
       id: parsed.data.promptTypeId,
       deletedAt: null,
       isActive: true,
-      OR: [{ ownerId: null }, { ownerId: session.user.id }],
+      OR: [{ ownerId: null }, { ownerId: authz.user.id }],
     },
   });
   if (!prompt) return apiError("NOT_FOUND", "小说类型不存在或未启用", 404);
@@ -47,7 +46,7 @@ export async function POST(request: Request) {
   let generation;
   try {
     await prisma.generation.updateMany({
-      where: { userId: session.user.id, status: "RUNNING", createdAt: { lt: new Date(Date.now() - 4 * 60_000) } },
+      where: { userId: authz.user.id, status: "RUNNING", createdAt: { lt: new Date(Date.now() - 4 * 60_000) } },
       data: {
         status: "FAILED",
         errorCode: "STALE_GENERATION",
@@ -57,7 +56,7 @@ export async function POST(request: Request) {
     });
     generation = await prisma.generation.create({
       data: {
-        userId: session.user.id,
+        userId: authz.user.id,
         promptTypeId: prompt.id,
         promptNameSnapshot: prompt.name,
         promptTemplateSnapshot: prompt.chapterTemplate,
@@ -90,7 +89,13 @@ export async function POST(request: Request) {
     if (finalized) return;
     finalized = true;
     clearTimeout(timeout);
-    const costPoints = await chargeUsage(session.user.id, selectedModel, usage, generation.id, "单篇小说生成");
+    const costPoints = await chargeUsage(authz.user.id, selectedModel, usage, generation.id, "单篇小说生成").catch((error) => {
+      if (error instanceof Error && (error.message === "INSUFFICIENT_POINTS" || error.message === "ACCOUNT_DISABLED")) {
+        console.error("[generation-stream] billing failed after generation", { generationId: generation.id, code: error.message });
+        return new Prisma.Decimal(0);
+      }
+      throw error;
+    });
     await prisma.generation.update({
       where: { id: generation.id },
       data: {
@@ -119,7 +124,11 @@ export async function POST(request: Request) {
             output += item.text;
             controller.enqueue(event("delta", { text: item.text }));
           } else {
-            usage = item.usage;
+            usage = {
+              inputTokens: (usage.inputTokens ?? 0) + (item.usage.inputTokens ?? 0),
+              outputTokens: (usage.outputTokens ?? 0) + (item.usage.outputTokens ?? 0),
+              totalTokens: (usage.totalTokens ?? 0) + (item.usage.totalTokens ?? 0),
+            };
           }
         }
         if (!output.trim()) throw new Error("EMPTY_PROVIDER_OUTPUT");
@@ -131,11 +140,11 @@ export async function POST(request: Request) {
         if (isCancelled) {
           await finalize("CANCELLED", "CANCELLED", "用户已停止生成");
         } else {
-          const code = isTimeout ? "PROVIDER_TIMEOUT" : "PROVIDER_ERROR";
-          const message = isTimeout ? "模型生成超时，请缩短篇幅后重试" : "模型服务暂时不可用";
-          await finalize("FAILED", code, message);
+          const failure = classifyProviderError(error, isTimeout);
+          console.error("[generation-stream] failed", { generationId: generation.id, code: failure.code });
+          await finalize("FAILED", failure.code, failure.message);
           try {
-            controller.enqueue(event("error", { code, message }));
+            controller.enqueue(event("error", { code: failure.code, message: failure.message }));
           } catch {}
         }
       } finally {

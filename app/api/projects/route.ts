@@ -1,34 +1,34 @@
-import { auth } from "@/auth";
 import { apiError } from "@/lib/api";
-import { novelProjectInputSchema } from "@/lib/novels";
+import { requireActiveApi } from "@/lib/auth-user";
+import { isChapterComplete, novelProjectInputSchema } from "@/lib/novels";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) return apiError("UNAUTHORIZED", "请先登录", 401);
+  const authz = await requireActiveApi();
+  if ("error" in authz) return authz.error;
   const projects = await prisma.novelProject.findMany({
-    where: { userId: session.user.id },
+    where: { userId: authz.user.id },
     orderBy: { updatedAt: "desc" },
-    include: { chapters: { select: { status: true } } },
+    include: { chapters: { select: { status: true, content: true } } },
   });
   return Response.json({ data: projects.map(({ chapters, ...project }) => ({
     ...project,
-    completedChapters: chapters.filter((chapter) => chapter.status === "COMPLETED").length,
+    completedChapters: chapters.filter((chapter) => isChapterComplete(chapter, project.targetWords, project.chapterCount)).length,
   })) });
 }
 
 export async function POST(request: Request) {
-  const session = await auth();
-  if (!session?.user?.id) return apiError("UNAUTHORIZED", "请先登录", 401);
+  const authz = await requireActiveApi();
+  if ("error" in authz) return authz.error;
   const parsed = novelProjectInputSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return apiError("VALIDATION_ERROR", "小说参数不正确", 400, parsed.error.flatten());
   const prompt = await prisma.promptType.findFirst({
-    where: { id: parsed.data.promptTypeId, deletedAt: null, isActive: true, OR: [{ ownerId: null }, { ownerId: session.user.id }] },
+    where: { id: parsed.data.promptTypeId, deletedAt: null, isActive: true, OR: [{ ownerId: null }, { ownerId: authz.user.id }] },
   });
   if (!prompt) return apiError("NOT_FOUND", "小说类型不存在或未启用", 404);
   const project = await prisma.novelProject.create({
     data: {
-      userId: session.user.id,
+      userId: authz.user.id,
       promptTypeId: prompt.id,
       promptNameSnapshot: prompt.name,
       outlinePromptSnapshot: prompt.outlineTemplate,

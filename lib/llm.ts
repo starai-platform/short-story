@@ -134,11 +134,20 @@ export async function* streamStory(systemPrompt: string, userPrompt: string, sig
         { signal },
       );
       yield { type: "model", model: selected };
+      let finishReason: string | null | undefined;
+      let lastUsage: LlmUsage | undefined;
       for await (const chunk of stream) {
-        const text = chunk.choices[0]?.delta?.content;
+        const choice = chunk.choices[0];
+        const text = choice?.delta?.content;
         if (text) { emitted = true; yield { type: "delta", text }; }
-        if (chunk.usage) yield { type: "usage", usage: responseUsage(chunk.usage) };
+        if (choice?.finish_reason) finishReason = choice.finish_reason;
+        if (chunk.usage) {
+          lastUsage = responseUsage(chunk.usage);
+          yield { type: "usage", usage: lastUsage };
+        }
       }
+      if (finishReason === "length") throw new LlmOutputTruncatedError(maxOutputTokens(), lastUsage || {});
+      if (finishReason === "content_filter") throw new LlmContentFilteredError();
       return;
     } catch (error) {
       lastError = error;
@@ -193,7 +202,7 @@ export function classifyProviderError(error: unknown, timedOut = false): SafePro
   if (error instanceof LlmOutputTruncatedError) {
     return {
       code: "PROVIDER_OUTPUT_TRUNCATED",
-      message: `模型未能在 ${error.maxTokens.toLocaleString("zh-CN")} Token 的大纲输出额度内完成，请重试；若反复出现，请联系管理员检查模型输出策略`,
+      message: `模型未能在 ${error.maxTokens.toLocaleString("zh-CN")} Token 的输出额度内完成，请重试；若反复出现，请联系管理员检查模型输出策略`,
       httpStatus: 422,
       diagnostic: {
         errorName,
@@ -206,7 +215,7 @@ export function classifyProviderError(error: unknown, timedOut = false): SafePro
   if (error instanceof LlmContentFilteredError) {
     return {
       code: "PROVIDER_CONTENT_FILTERED",
-      message: "大纲被模型服务的内容安全策略拦截，请调整题材描述后重试",
+      message: "内容被模型服务的内容安全策略拦截，请调整题材描述后重试",
       httpStatus: 422,
       diagnostic: { errorName },
     };

@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS "NovelChapter" (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "NovelChapter_projectId_number_key" ON "NovelChapter"("projectId", "number");
 CREATE INDEX IF NOT EXISTS "NovelChapter_projectId_status_idx" ON "NovelChapter"("projectId", "status");
+CREATE UNIQUE INDEX IF NOT EXISTS "NovelChapter_one_generating_per_project_idx" ON "NovelChapter"("projectId") WHERE "status" = 'GENERATING';
 
 CREATE TABLE IF NOT EXISTS "Generation" (
   "id" TEXT NOT NULL PRIMARY KEY,
@@ -115,6 +116,7 @@ CREATE TABLE IF NOT EXISTS "Generation" (
 );
 CREATE INDEX IF NOT EXISTS "Generation_userId_createdAt_idx" ON "Generation"("userId", "createdAt");
 CREATE INDEX IF NOT EXISTS "Generation_promptTypeId_idx" ON "Generation"("promptTypeId");
+CREATE UNIQUE INDEX IF NOT EXISTS "Generation_one_running_per_user_idx" ON "Generation"("userId") WHERE "status" = 'RUNNING';
 
 CREATE TABLE IF NOT EXISTS "AiModel" (
   "id" TEXT NOT NULL PRIMARY KEY,
@@ -185,4 +187,4 @@ CREATE TABLE IF NOT EXISTS "SystemSettings" (
   "updatedAt" DATETIME NOT NULL
 );
 
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildChapterContinuationPrompt, buildChapterPrompt, buildNovelOutlineResponseFormat, buildOutlinePrompt, getMinimumChapterWords, novelOutlineSchema, novelProjectInputSchema, OutlineOutputError, parseChapterOutput, parseModelJson, parseNovelOutline } from "@/lib/novels";
+import { buildChapterContinuationPrompt, buildChapterPrompt, buildNovelOutlineResponseFormat, buildOutlinePrompt, getMinimumChapterWords, isChapterComplete, novelOutlineSchema, novelProjectInputSchema, OutlineOutputError, parseChapterOutput, parseModelJson, parseNovelOutline } from "@/lib/novels";
 
 describe("Novel project constraints", () => {
   const base = { promptTypeId: "p1", theme: "一名记者调查雨城所有人共同遗忘的一天", keywords: ["雨城"], style: "冷峻简洁", pov: "第三人称限知", chapterCount: 20, targetWords: 50000 };
@@ -85,6 +85,11 @@ describe("Model output parsing", () => {
   it("never accepts fewer than 2000 characters as a completed chapter", () => {
     expect(getMinimumChapterWords(50000, 20)).toBe(2125);
     expect(getMinimumChapterWords(20000, 10)).toBe(2000);
+  });
+  it("treats short COMPLETED chapters as unfinished", () => {
+    expect(isChapterComplete({ status: "COMPLETED", content: "短" }, 20000, 10)).toBe(false);
+    expect(isChapterComplete({ status: "FAILED", content: "字".repeat(3000) }, 20000, 10)).toBe(false);
+    expect(isChapterComplete({ status: "COMPLETED", content: "字".repeat(2000) }, 20000, 10)).toBe(true);
   });
   it("assigns distinct retention jobs to the first three chapters", () => {
     const project = { title: "雨城", theme: "失忆", protagonist: "记者", worldSetting: "雨城", pace: "紧凑", ending: "反转", constraints: "无", synopsis: "调查失忆", style: "冷峻", pov: "第三人称", targetWords: 30000, chapterCount: 10, characters: [], outline: { chapters: [] }, chapterPromptSnapshot: "类型规则", promptTypeId: "p1", keywords: [] };

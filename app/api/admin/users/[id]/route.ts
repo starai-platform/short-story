@@ -12,8 +12,8 @@ export async function PATCH(request: Request, { params }: Context) {
   const { id } = await params;
   const result = await prisma.$transaction(async (tx) => {
     const existing = await tx.user.findUnique({ where: { id } }); if (!existing) throw new Error("NOT_FOUND");
-    const user = await tx.user.update({ where: { id }, data: { ...(parsed.data.isActive !== undefined ? { isActive: parsed.data.isActive } : {}), ...(parsed.data.adjustment ? { points: { increment: parsed.data.adjustment } } : {}) } });
-    if (parsed.data.adjustment) await tx.pointTransaction.create({ data: { userId: id, type: "ADJUSTMENT", amount: parsed.data.adjustment, balanceAfter: user.points, description: parsed.data.note || "管理员调整算力点" } });
+    const user = await tx.user.update({ where: { id }, data: { ...(parsed.data.isActive !== undefined ? { isActive: parsed.data.isActive } : {}), ...(parsed.data.adjustment !== undefined && parsed.data.adjustment !== 0 ? { points: { increment: parsed.data.adjustment } } : {}) } });
+    if (parsed.data.adjustment !== undefined && parsed.data.adjustment !== 0) await tx.pointTransaction.create({ data: { userId: id, type: "ADJUSTMENT", amount: parsed.data.adjustment, balanceAfter: user.points, description: parsed.data.note || "管理员调整算力点" } });
     return user;
   }).catch((error) => { if (error instanceof Error && error.message === "NOT_FOUND") return null; throw error; });
   if (!result) return apiError("NOT_FOUND", "用户不存在", 404);

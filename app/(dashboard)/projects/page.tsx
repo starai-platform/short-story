@@ -3,6 +3,7 @@ import { ArrowRight, BookMarked, BookOpen, BookOpenText, Clock3, Files, Plus, Sp
 import { requireUser } from "@/lib/auth-user";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/format";
+import { isChapterComplete } from "@/lib/novels";
 
 const labels: Record<string, string> = { DRAFT: "待生成大纲", OUTLINING: "规划中", READY: "创作中", GENERATING: "生成章节中", COMPLETED: "已完成", FAILED: "需要重试" };
 const coverTones = ["from-[#253b35] to-[#16241f]", "from-[#673b2e] to-[#321d18]", "from-[#313951] to-[#191d2c]", "from-[#5d4930] to-[#2c2114]"];
@@ -18,7 +19,7 @@ export default async function ProjectsPage() {
     <section className="mb-9 grid grid-cols-3 gap-3 sm:gap-4">{[[Files, "全部作品", projects.length], [Clock3, "正在创作", writingCount], [BookMarked, "已经完成", finishedCount]].map(([Icon, label, value]) => { const StatIcon = Icon as typeof Files; return <div key={String(label)} className="rounded-2xl border border-black/[.07] bg-white/75 p-4 shadow-sm sm:flex sm:items-center sm:gap-4 sm:p-5"><span className="hidden size-10 place-items-center rounded-xl bg-black/[.04] text-black/45 sm:grid"><StatIcon className="size-4" /></span><div><p className="text-xl font-semibold sm:text-2xl">{String(value)}</p><p className="mt-1 text-[11px] text-black/40 sm:text-xs">{String(label)}</p></div></div>; })}</section>
     <div className="mb-5 flex items-end justify-between"><div><p className="eyebrow">Bookshelf</p><h2 className="mt-2 font-serif text-2xl font-semibold">最近作品</h2></div><p className="hidden text-xs text-black/35 sm:block">累计创作 {totalWords.toLocaleString()} 字</p></div>
     {projects.length ? <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">{projects.map((project, index) => {
-      const complete = project.chapters.filter((chapter) => chapter.status === "COMPLETED").length;
+      const complete = project.chapters.filter((chapter) => isChapterComplete(chapter, project.targetWords, project.chapterCount)).length;
       const words = project.chapters.reduce((sum, chapter) => sum + chapter.content.length, 0);
       const progress = Math.round((complete / project.chapterCount) * 100);
       const finished = progress === 100;

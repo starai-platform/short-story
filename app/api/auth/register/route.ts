@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { adminEmails, isAdminEmail } from "@/lib/admin";
 import { apiError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 
@@ -12,6 +13,10 @@ const registerSchema = z.object({
 export async function POST(request: Request) {
   const parsed = registerSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return apiError("VALIDATION_ERROR", "注册信息不正确", 400, parsed.error.flatten());
+  if (isAdminEmail(parsed.data.email)) {
+    const existingAdmin = await prisma.user.findFirst({ where: { email: { in: adminEmails() } } });
+    if (existingAdmin) return apiError("FORBIDDEN", "该邮箱为管理员预留，请使用其他邮箱注册", 403);
+  }
 
   try {
     const passwordHash = await bcrypt.hash(parsed.data.password, 12);

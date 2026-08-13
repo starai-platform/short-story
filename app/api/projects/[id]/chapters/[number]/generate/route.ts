@@ -1,9 +1,9 @@
 import { Prisma } from "@prisma/client";
-import { auth } from "@/auth";
 import { apiError } from "@/lib/api";
-import { assertCanGenerate, chargeUsage } from "@/lib/billing";
-import { resolveModelChain, streamStory, type LlmUsage, type ResolvedModel } from "@/lib/llm";
-import { buildChapterContinuationPrompt, buildChapterPrompt, getMinimumChapterWords, parseChapterOutput } from "@/lib/novels";
+import { requireActiveApi } from "@/lib/auth-user";
+import { assertCanGenerate, billingErrorResponse, chargeUsage } from "@/lib/billing";
+import { LlmContentFilteredError, LlmOutputTruncatedError, resolveModelChain, streamStory, type LlmUsage, type ResolvedModel } from "@/lib/llm";
+import { buildChapterContinuationPrompt, buildChapterPrompt, getMinimumChapterWords, isChapterComplete, parseChapterOutput } from "@/lib/novels";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -18,8 +18,8 @@ const CHAPTER_SYSTEM = "你是专业中文类型小说作家，正在逐章创�
 const sse = (type: string, data: unknown) => encoder.encode(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
 
 export async function POST(_: Request, { params }: Context) {
-  const session = await auth();
-  if (!session?.user?.id) return apiError("UNAUTHORIZED", "请先登录", 401);
+  const authz = await requireActiveApi();
+  if ("error" in authz) return authz.error;
   const { id, number: rawNumber } = await params;
   const number = Number(rawNumber);
   if (!Number.isInteger(number) || number < 1 || number > 50) return apiError("VALIDATION_ERROR", "章节编号不正确", 400);
@@ -27,28 +27,27 @@ export async function POST(_: Request, { params }: Context) {
   let models: ResolvedModel[];
   try {
     models = await resolveModelChain();
-    await assertCanGenerate(session.user.id, models[0]);
+    await assertCanGenerate(authz.user.id, ...models);
   } catch (error) {
-    if (error instanceof Error && error.message === "INSUFFICIENT_POINTS") return apiError("INSUFFICIENT_POINTS", "算力点不足，请先使用兑换码充值", 402);
-    return apiError("PROVIDER_ERROR", "模型服务尚未配置", 503);
+    return billingErrorResponse(error);
   }
   let selectedModel = models[0];
   let model = selectedModel.model;
 
   const chapter = await prisma.novelChapter.findFirst({
-    where: { projectId: id, number, project: { userId: session.user.id } },
+    where: { projectId: id, number, project: { userId: authz.user.id } },
     include: { project: true },
   });
   if (!chapter) return apiError("NOT_FOUND", "章节不存在", 404);
   const minimumWords = getMinimumChapterWords(chapter.project.targetWords, chapter.project.chapterCount);
-  const isExpansion = chapter.status === "COMPLETED" && chapter.content.length < minimumWords;
-  if (chapter.status === "COMPLETED" && !isExpansion) return apiError("CONFLICT", "本章已经达到最低字数", 409);
+  if (isChapterComplete(chapter, chapter.project.targetWords, chapter.project.chapterCount)) return apiError("CONFLICT", "本章已经达到最低字数", 409);
+  const preserveContent = chapter.content.length > 0;
   const previous = await prisma.novelChapter.findMany({
     where: { projectId: id, number: { lt: number } },
     orderBy: { number: "asc" },
     select: { number: true, title: true, generationSummary: true, content: true, status: true },
   });
-  if (previous.some((item) => item.status !== "COMPLETED")) return apiError("CONFLICT", "请先完成前面的章节", 409);
+  if (previous.some((item) => !isChapterComplete(item, chapter.project.targetWords, chapter.project.chapterCount))) return apiError("CONFLICT", "请先完成前面的章节", 409);
 
   await prisma.novelChapter.updateMany({
     where: { projectId: id, status: "GENERATING", updatedAt: { lt: new Date(Date.now() - 4 * 60_000) } },
@@ -56,8 +55,8 @@ export async function POST(_: Request, { params }: Context) {
   });
   try {
     const locked = await prisma.novelChapter.updateMany({
-      where: { id: chapter.id, status: { in: isExpansion ? ["PENDING", "FAILED", "CANCELLED", "COMPLETED"] : ["PENDING", "FAILED", "CANCELLED"] } },
-      data: { status: "GENERATING", model, content: isExpansion ? chapter.content : "", errorCode: null, errorMessage: null },
+      where: { id: chapter.id, status: { in: ["PENDING", "FAILED", "CANCELLED", "COMPLETED"] } },
+      data: { status: "GENERATING", model, content: preserveContent ? chapter.content : "", errorCode: null, errorMessage: null },
     });
     if (!locked.count) return apiError("CONFLICT", "本章已完成或正在生成", 409);
     await prisma.novelProject.update({ where: { id }, data: { status: "GENERATING" } });
@@ -70,7 +69,7 @@ export async function POST(_: Request, { params }: Context) {
   const abort = new AbortController();
   const timeout = setTimeout(() => abort.abort("timeout"), 180_000);
   const startedAt = Date.now();
-  let content = isExpansion ? chapter.content : "";
+  let content = preserveContent ? chapter.content : "";
   let finalTitle = chapter.title;
   let generationSummary = chapter.generationSummary;
   let usage: LlmUsage = {};
@@ -86,14 +85,19 @@ export async function POST(_: Request, { params }: Context) {
     finalized = true;
     clearTimeout(timeout);
     if ((usage.inputTokens || usage.outputTokens) && costPoints.eq(0)) {
-      costPoints = await chargeUsage(session.user.id, selectedModel, usage, chapter.id, `生成《${chapter.project.title}》第 ${number} 章`);
+      try {
+        costPoints = await chargeUsage(authz.user.id, selectedModel, usage, chapter.id, `生成《${chapter.project.title}》第 ${number} 章`);
+      } catch (error) {
+        if (!(error instanceof Error && (error.message === "INSUFFICIENT_POINTS" || error.message === "ACCOUNT_DISABLED"))) throw error;
+        console.error("[chapter-generation] billing failed after generation", { projectId: id, number, code: error.message });
+      }
     }
     await prisma.novelChapter.update({
       where: { id: chapter.id },
       data: {
         title: finalTitle,
         content,
-        generationSummary: status === "COMPLETED" ? generationSummary : "",
+        generationSummary,
         status,
         model,
         inputTokens: usage.inputTokens,
@@ -128,23 +132,27 @@ export async function POST(_: Request, { params }: Context) {
     let segmentRaw = "";
     let emitted = 0;
     let bodyOffset = -1;
-    for await (const item of streamStory(CHAPTER_SYSTEM, prompt, abort.signal, models)) {
-      if (item.type === "model") { selectedModel = item.model; model = item.model.model; continue; }
-      if (item.type === "usage") { addUsage(item.usage); continue; }
-      segmentRaw += item.text;
-      if (bodyOffset < 0) {
-        const marker = segmentRaw.indexOf(BODY_MARKER);
-        if (marker >= 0) bodyOffset = marker + BODY_MARKER.length;
-      }
-      if (bodyOffset >= 0) {
-        const body = segmentRaw.slice(bodyOffset);
-        const summaryAt = body.indexOf(SUMMARY_MARKER);
-        const safeEnd = summaryAt >= 0 ? summaryAt : Math.max(0, body.length - SUMMARY_MARKER.length);
-        if (safeEnd > emitted) {
-          controller.enqueue(sse("delta", { text: body.slice(emitted, safeEnd) }));
-          emitted = safeEnd;
+    try {
+      for await (const item of streamStory(CHAPTER_SYSTEM, prompt, abort.signal, models)) {
+        if (item.type === "model") { selectedModel = item.model; model = item.model.model; continue; }
+        if (item.type === "usage") { addUsage(item.usage); continue; }
+        segmentRaw += item.text;
+        if (bodyOffset < 0) {
+          const marker = segmentRaw.indexOf(BODY_MARKER);
+          if (marker >= 0) bodyOffset = marker + BODY_MARKER.length;
+        }
+        if (bodyOffset >= 0) {
+          const body = segmentRaw.slice(bodyOffset);
+          const summaryAt = body.indexOf(SUMMARY_MARKER);
+          const safeEnd = summaryAt >= 0 ? summaryAt : Math.max(0, body.length - SUMMARY_MARKER.length);
+          if (safeEnd > emitted) {
+            controller.enqueue(sse("delta", { text: body.slice(emitted, safeEnd) }));
+            emitted = safeEnd;
+          }
         }
       }
+    } catch (error) {
+      if (!(error instanceof LlmOutputTruncatedError && segmentRaw.trim())) throw error;
     }
     const parsed = parseChapterOutput(segmentRaw, finalTitle, chapter.outlineSummary);
     if (!parsed.content.trim()) throw new Error("EMPTY_PROVIDER_OUTPUT");
@@ -161,8 +169,8 @@ export async function POST(_: Request, { params }: Context) {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      controller.enqueue(sse("meta", { chapterId: chapter.id, number, minimumWords, targetWords: Math.round(chapter.project.targetWords / chapter.project.chapterCount), expanding: isExpansion }));
-      if (isExpansion && content) controller.enqueue(sse("delta", { text: content }));
+      controller.enqueue(sse("meta", { chapterId: chapter.id, number, minimumWords, targetWords: Math.round(chapter.project.targetWords / chapter.project.chapterCount), expanding: preserveContent }));
+      if (preserveContent && content) controller.enqueue(sse("delta", { text: content }));
       try {
         while (content.length < minimumWords && modelCalls < maxCalls) {
           const prompt = content
@@ -182,13 +190,14 @@ export async function POST(_: Request, { params }: Context) {
         }
         await finalize("COMPLETED");
         controller.enqueue(sse("done", { status: "COMPLETED", title: finalTitle, usage, actualWords: content.length, minimumWords, modelCalls }));
-      } catch {
+      } catch (error) {
+        console.error("[chapter-generation] failed", { projectId: id, number, error });
         const isTimeout = abort.signal.reason === "timeout";
         const isCancelled = clientCancelled || (abort.signal.aborted && !isTimeout);
         if (isCancelled) await finalize("CANCELLED", "CANCELLED", "用户已停止生成");
         else {
-          const code = isTimeout ? "PROVIDER_TIMEOUT" : "PROVIDER_ERROR";
-          const message = isTimeout ? "章节生成超时，可重试本章" : "章节生成失败，可重试本章";
+          const code = error instanceof LlmContentFilteredError ? "PROVIDER_CONTENT_FILTERED" : isTimeout ? "PROVIDER_TIMEOUT" : "PROVIDER_ERROR";
+          const message = error instanceof LlmContentFilteredError ? "本章被模型内容安全策略拦截，可调整后重试" : isTimeout ? "章节生成超时，可重试本章" : "章节生成失败，可重试本章";
           await finalize("FAILED", code, message);
           try { controller.enqueue(sse("error", { code, message })); } catch {}
         }

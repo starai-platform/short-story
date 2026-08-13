@@ -13,5 +13,25 @@ const databasePath = path.isAbsolute(rawPath) || /^[A-Za-z]:[\\/]/.test(rawPath)
   : path.resolve(schemaDirectory, rawPath);
 const sql = readFileSync(path.join(schemaDirectory, "sqlite-init.sql"), "utf8");
 const database = new DatabaseSync(databasePath);
-try { database.exec(sql); } finally { database.close(); }
+function applySchema() { database.exec(sql); }
+function resetInterruptedJobs() {
+  database.exec(`
+    UPDATE "NovelChapter"
+    SET "status" = 'FAILED', "errorCode" = 'STALE_GENERATION', "errorMessage" = '上次生成异常中断', "completedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
+    WHERE "status" = 'GENERATING';
+    UPDATE "Generation"
+    SET "status" = 'FAILED', "errorCode" = 'STALE_GENERATION', "errorMessage" = '上次生成异常中断', "completedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
+    WHERE "status" = 'RUNNING';
+  `);
+}
+try {
+  try {
+    applySchema();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/UNIQUE constraint failed|already exists/i.test(message)) throw error;
+    resetInterruptedJobs();
+    applySchema();
+  }
+} finally { database.close(); }
 process.stdout.write(`[SQLite] 数据库已就绪：${databasePath}\n`);

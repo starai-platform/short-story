@@ -279,6 +279,10 @@ export function getMinimumChapterWords(targetWords: number, chapterCount: number
   return Math.max(2000, Math.floor(getChapterTargetWords(targetWords, chapterCount) * 0.85));
 }
 
+export function isChapterComplete(chapter: { status: string; content: string }, targetWords: number, chapterCount: number) {
+  return chapter.status === "COMPLETED" && chapter.content.length >= getMinimumChapterWords(targetWords, chapterCount);
+}
+
 export function buildChapterPrompt({ project, chapter, previous }: ChapterContext) {
   const keywords = normalizeKeywords(project.keywords);
   const perChapter = getChapterTargetWords(project.targetWords, project.chapterCount);

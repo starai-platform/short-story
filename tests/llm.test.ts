@@ -53,6 +53,25 @@ describe("OpenAI-compatible adapter", () => {
     expect(result.text).toBe('{"title":"雨城"}');
   });
 
+  it("reports truncated streaming output after emitting deltas", async () => {
+    create.mockResolvedValueOnce((async function* () {
+      yield { choices: [{ delta: { content: "开头" }, finish_reason: null }], usage: null };
+      yield { choices: [{ delta: {}, finish_reason: "length" }], usage: { prompt_tokens: 10, completion_tokens: 16000, total_tokens: 16010 } };
+    })());
+    const { classifyProviderError, streamStory } = await import("@/lib/llm");
+    const events = [];
+    try {
+      for await (const event of streamStory("system", "user", new AbortController().signal)) events.push(event);
+      throw new Error("expected streamStory to fail");
+    } catch (error) {
+      expect(events).toEqual(expect.arrayContaining([
+        { type: "delta", text: "开头" },
+        { type: "usage", usage: expect.objectContaining({ outputTokens: 16000 }) },
+      ]));
+      expect(classifyProviderError(error).code).toBe("PROVIDER_OUTPUT_TRUNCATED");
+    }
+  });
+
   it("reports truncated non-streaming output before JSON parsing", async () => {
     create.mockResolvedValueOnce({
       choices: [{ finish_reason: "length", message: { content: "{" } }],

@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BookCheck, ChevronLeft, Download, LoaderCircle, Play, RotateCcw, Square, Trash2 } from "lucide-react";
+import { isChapterComplete as chapterMeetsMinimum } from "@/lib/novels";
 
 type Chapter = { id: string; number: number; title: string; outlineSummary: string; beats: unknown; content: string; generationSummary: string; status: string; errorMessage: string | null };
 type Project = { id: string; title: string; synopsis: string; theme: string; status: string; chapterCount: number; targetWords: number; style: string; pov: string; promptNameSnapshot: string; errorMessage: string | null };
@@ -23,7 +24,7 @@ export function NovelWorkspace({ project, initialChapters }: { project: Project;
   const selected = chapters.find((chapter) => chapter.number === selectedNumber);
   const targetPerChapter = Math.round(project.targetWords / project.chapterCount);
   const minimumChapterWords = Math.max(2000, Math.floor(targetPerChapter * 0.85));
-  const isChapterComplete = (chapter: Chapter) => chapter.status === "COMPLETED" && chapter.content.length >= minimumChapterWords;
+  const isChapterComplete = (chapter: Chapter) => chapterMeetsMinimum(chapter, project.targetWords, project.chapterCount);
   const completedCount = chapters.filter(isChapterComplete).length;
   const actualWords = chapters.reduce((sum, chapter) => sum + chapter.content.length, 0);
   const progress = project.chapterCount ? Math.round((completedCount / project.chapterCount) * 100) : 0;
@@ -45,7 +46,7 @@ export function NovelWorkspace({ project, initialChapters }: { project: Project;
     setSelectedNumber(number); setStreamText(""); setError(""); setRunning(true);
     const controller = new AbortController(); abortRef.current = controller;
     let output = ""; let success = false; let finalTitle = "";
-    setChapters((current) => current.map((chapter) => chapter.number === number ? { ...chapter, status: "GENERATING", content: "" } : chapter));
+    setChapters((current) => current.map((chapter) => chapter.number === number ? { ...chapter, status: "GENERATING" } : chapter));
     try {
       const response = await fetch(`/api/projects/${project.id}/chapters/${number}/generate`, { method: "POST", signal: controller.signal, headers: { Accept: "text/event-stream" } });
       if (!response.ok) { const body = await response.json(); throw new Error(body.error?.message || "章节生成失败"); }
@@ -71,7 +72,7 @@ export function NovelWorkspace({ project, initialChapters }: { project: Project;
       return true;
     } catch (cause) {
       const stopped = controller.signal.aborted;
-      setChapters((current) => current.map((chapter) => chapter.number === number ? { ...chapter, content: output, status: stopped ? "CANCELLED" : "FAILED", errorMessage: stopped ? "已停止，可从本章重试" : "生成失败，可重试" } : chapter));
+      setChapters((current) => current.map((chapter) => chapter.number === number ? { ...chapter, content: output || chapter.content, status: stopped ? "CANCELLED" : "FAILED", errorMessage: stopped ? "已停止，可从本章重试" : "生成失败，可重试" } : chapter));
       setError(stopped ? "已停止生成，之前完成的章节均已保存。" : cause instanceof Error ? cause.message : "章节生成失败");
       setStreamText("");
       return false;
